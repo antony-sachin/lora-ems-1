@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CanSat Telemetry Dashboard</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI';
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+
+    header {
+      background: #020617;
+      padding: 15px;
+      text-align: center;
+      font-size: 22px;
+    }
+
+    .container { padding: 20px; }
+
+    h2 {
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 5px;
+      margin-top: 25px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 15px;
+    }
+
+    .card {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .value {
+      font-size: 24px;
+      margin-top: 8px;
+    }
+
+    canvas {
+      background: #1e293b;
+      border-radius: 10px;
+      margin-top: 20px;
+      padding: 10px;
+    }
+
+    button {
+      margin-top: 15px;
+      padding: 10px;
+      background: #2563eb;
+      border: none;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>🚀 CanSat Telemetry Dashboard</header>
+
+<div class="container">
+
+<input type="date" id="datePicker">
+
+<!-- ENVIRONMENT -->
+<h2>🌍 Environment</h2>
+<div class="grid">
+  <div class="card">Temperature<div class="value" id="temp">--</div></div>
+  <div class="card">Humidity<div class="value" id="hum">--</div></div>
+  <div class="card">Pressure<div class="value" id="pres">--</div></div>
+  <div class="card">VOC<div class="value" id="gas">--</div></div>
+</div>
+
+<!-- IMU -->
+<h2>🛰️ IMU / Position</h2>
+<div class="grid">
+  <div class="card">Accel X<div class="value" id="ax">--</div></div>
+  <div class="card">Accel Y<div class="value" id="ay">--</div></div>
+  <div class="card">Accel Z<div class="value" id="az">--</div></div>
+  <div class="card">Altitude<div class="value" id="alt">--</div></div>
+</div>
+
+<button onclick="downloadCSV()">Download CSV</button>
+
+<!-- GRAPH -->
+<canvas id="chart"></canvas>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getDatabase, ref, onValue, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCqEeiX5mjDWjCbQfQDTUJ5JrfBFqBnET4",
+  databaseURL: "https://lora-ems-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+let dataArr = [];
+let currentRef = null;
+
+// 📊 Chart
+const chart = new Chart(document.getElementById("chart"), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'Temp', data: [] },
+      { label: 'Humidity', data: [] },
+      { label: 'Pressure', data: [] },
+      { label: 'Altitude', data: [] }
+    ]
+  }
+});
+
+// ✅ Filter last 30 days
+function filterLast30Days(data) {
+  const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  return data.filter(d => (d.time * 1000) >= cutoff);
+}
+
+function load(date) {
+  if (currentRef) off(currentRef);
+
+  currentRef = ref(db, "logs/" + date);
+
+  onValue(currentRef, snap => {
+    const data = snap.val();
+    if (!data) return;
+
+    let arr = Object.values(data);
+    arr = filterLast30Days(arr);
+
+    if (arr.length === 0) return;
+
+    dataArr = arr;
+    const latest = arr[arr.length - 1];
+
+    // ENV
+    temp.innerText = latest.temp + " °C";
+    hum.innerText  = latest.hum + " %";
+    pres.innerText = latest.pres + " hPa";
+    gas.innerText  = latest.gas + " kΩ";
+
+    // IMU
+    ax.innerText = latest.ax ?? "--";
+    ay.innerText = latest.ay ?? "--";
+    az.innerText = latest.az ?? "--";
+    alt.innerText = latest.alt ?? "--";
+
+    const last = arr.slice(-20);
+
+    chart.data.labels = last.map(d =>
+      new Date(d.time * 1000).toLocaleTimeString()
+    );
+
+    chart.data.datasets[0].data = last.map(d => d.temp);
+    chart.data.datasets[1].data = last.map(d => d.hum);
+    chart.data.datasets[2].data = last.map(d => d.pres);
+    chart.data.datasets[3].data = last.map(d => d.alt);
+
+    chart.update();
+  });
+}
+
+// default today
+const today = new Date().toISOString().split("T")[0];
+datePicker.value = today;
+load(today);
+
+datePicker.addEventListener("change", e => load(e.target.value));
+
+// CSV export
+window.downloadCSV = function () {
+  let csv = "time,temp,hum,pres,gas,ax,ay,az,alt\n";
+
+  dataArr.forEach(d => {
+    csv += `${new Date(d.time*1000)},${d.temp},${d.hum},${d.pres},${d.gas},${d.ax},${d.ay},${d.az},${d.alt}\n`;
+  });
+
+  const blob = new Blob([csv]);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "cansat_data.csv";
+  a.click();
+};
+</script>
+
+</body>
+</html>
