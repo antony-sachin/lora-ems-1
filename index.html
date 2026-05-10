@@ -506,6 +506,22 @@
       }).format(new Date(timestamp * 1000)).toLowerCase();
     }
 
+    function formatIndiaDateTimeForCsv(timestamp) {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: indiaTimeZone,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true
+      }).formatToParts(new Date(timestamp * 1000));
+
+      const get = type => parts.find(part => part.type === type)?.value ?? "";
+      return `${get("day")}-${get("month")}-${get("year")} ${get("hour")}:${get("minute")}:${get("second")} ${get("dayPeriod").toLowerCase()} IST`;
+    }
+
     const chartOptions = {
       responsive: true,
       maintainAspectRatio: false,
@@ -706,7 +722,7 @@
 
       let csv = "time,temp,hum,pres,gas,ax,ay,az,alt\n";
       dataArr.forEach(item => {
-        csv += `${formatIndiaDateTime(item.time)} IST,${item.temp ?? ""},${item.hum ?? ""},${item.pres ?? ""},${item.gas ?? ""},${item.ax ?? ""},${item.ay ?? ""},${item.az ?? ""},${item.alt ?? ""}\n`;
+        csv += `${formatIndiaDateTimeForCsv(item.time)},${item.temp ?? ""},${item.hum ?? ""},${item.pres ?? ""},${item.gas ?? ""},${item.ax ?? ""},${item.ay ?? ""},${item.az ?? ""},${item.alt ?? ""}\n`;
       });
 
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
